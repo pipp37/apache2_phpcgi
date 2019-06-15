@@ -1,7 +1,69 @@
-version: '2'
+version: '3.1'
 services:
+  syslog-ng:
+    image: bobrik/syslog-ng
+    container_name: apache2phpfcgi-syslog-ng
+    working_dir: /var/www
+    volumes:
+      - /c/docker/sources/unix:/var/www
+      - /c/docker/logs/syslog-ng:/var/log/syslog-ng
+    networks:
+      dmz:
+        ipv4_address: 172.16.17.254
+    ports:
+      - "514:514/udp"
+  mysql:
+    image: mysql:8.0
+    depends_on:
+      - syslog-ng
+    container_name: apache2phpfcgi-mysql
+    working_dir: /var/www
+    volumes:
+      - /c/docker/sources/unix:/var/www
+    environment:
+      - MYSQL_ROOT_PASSWORD=toor
+      - MYSQL_DATABASE=devel
+      - MYSQL_USER=jouda
+      - MYSQL_PASSWORD=jouda
+    networks:
+      dmz:
+        ipv4_address: 172.16.17.253
+    ports:
+      - "13306:3306"
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://172.16.17.254:514"
+        tag: "{{.Name}}-{{.ID}}"
+  postgres:
+    image: postgres:9.6-alpine
+    depends_on:
+      - syslog-ng
+    container_name: apache2phpfcgi-pgsql
+    working_dir: /var/www
+    volumes:
+      - /c/docker/sources/unix:/var/www
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=toor
+      - POSTGRES_DB=develop
+    networks:
+      dmz:
+        ipv4_address: 172.16.17.252
+    ports:
+      - "15432:5432"
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://172.16.17.254:514"
+        tag: "{{.Name}}-{{.ID}}"
   apache2:
-    image: apache2_phpcgi
+    build: .
+    container_name: apache2phpfcgi
+    depends_on:
+      - syslog-ng
+    pid: "host"
+    image: pipp37/apache2_phpcgi
     ports:
       - "81:80"
       - "82:82"
@@ -9,10 +71,25 @@ services:
       - "84:84"
       - "86:86"
     volumes:
-      - ./logs:/var/log/apache2
-      - ./www:/var/www
-      - ./apache2:/etc/apache2
-      - ./php5.2.17:/etc/php5/cgi/5.2.17
-      - ./php5.3.29:/etc/php5/cgi/5.3.29
-      - ./php5.4.45:/etc/php5/cgi/5.4.45
-      - ./php5.6.29:/etc/php5/cgi/5.6.29
+      - /c/docker/logs/apache:/var/log/apache2
+      - /c/docker/sources/unix:/var/www
+      - /c/docker/apache:/etc/apache2
+      - /c/docker/php/php5.2.17:/etc/php5/cgi/5.2.17
+      - /c/docker/php/php5.3.29:/etc/php5/cgi/5.3.29
+      - /c/docker/php/php5.4.45:/etc/php5/cgi/5.4.45
+      - /c/docker/php/php5.6.29:/etc/php5/cgi/5.6.29
+    networks:
+      dmz:
+        ipv4_address: 172.16.17.2
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://172.16.17.254:514"
+        tag: "{{.Name}}-{{.ID}}"
+networks:
+  dmz:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.16.17.0/24
+
